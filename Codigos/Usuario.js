@@ -1,118 +1,242 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ScrollView, Image, Button, TextInput, TouchableOpacity, Linking } from 'react-native';
-
+import React, { useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, Image, Button,
+  TextInput, Alert, TouchableOpacity
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { auth } from '../Firebase/Firebase';
+import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export default function Usuario() {
-  return (
-    <View style={{flex:1, backgroundColor: '#EBF4FE'}}>
-    <ScrollView>
-      <View style={estilo.container}>
-        <View style={estilo.Card4}>
-          <Image style={estilo.ImagemEditada} source={require('../PastaFotos/LogoEditada.png')} />
-        </View>
-        <View>
-          <Image source={require('../PastaFotos/user.jpg')} style={{ borderRadius: 25, marginTop: 5 }} />
-        </View>
-        <View>
-          <Text style={{ color: 'blue', textAlign: 'center', fontSize: 13, marginRight: -13, fontWeight: 'bold' }}>
-            Editar perfil ✏️
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 15, fontWeight: 'bold', marginRight: 320 }}>
-            Nome:
-            
-          </Text>
-        </View>
+  const [userData, setUserData] = useState(null);
+  const [carregar, setCarregar] = useState(true);
+  const [editando, setEditando] = useState(false);
+  const [name, setName] = useState('');
+  const [galleryPermission, setGalleryPermission] = useState(false);
+  const [showSenha, setShowSenha] = useState(false);
+  const [email, setEmail] = useState('');
+  const [senha] = useState('********'); 
 
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 15, fontWeight: 'bold', marginRight: 320 }}>
-            Email:
+  const db = getFirestore();
 
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 15, fontWeight: 'bold', marginRight: 320 }}>
-            Senha:
-          </Text>
-          <View>
-            <Text style={{ alignSelf: 'center', fontSize: 20, fontWeight: 'bold', marginRight: 35 }}>
-              Seu plano
-            </Text>
-            <Image source={require('../PastaFotos/icone.png')}
-              style={{ alignItems: 'center', marginRight: 30, borderRadius: 20 }}
-            />
-          </View>
-        </View>
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const user = auth.currentUser;
+        if (user) {
+          setEmail(user.email || '');
 
-        <View style={{ backgroundColor: 'white', marginTop: 15, width: '90%', height: 180, borderRadius: 15, alignItems: 'center' }}>
+          const docRef = doc(db, 'users', user.uid);
+          const docSnap = await getDoc(docRef);
 
-          <View>
-            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
-              Plano Atual:
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUserData(data);
+            setName(data.name || '');
+          } else {
+            console.warn('Documento do usuário não encontrado.');
+            setUserData(null);
+          }
+        } else {
+          console.warn('Usuário não está logado.');
+          setUserData(null);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar dados do usuário:', error);
+        setUserData(null);
+      } finally {
+        setCarregar(false);
+      }
+    };
 
-            </Text>
-          </View>
-          <View>
-            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
-              Vencimento data:
+    const requestGalleryPermission = async () => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      setGalleryPermission(status === 'granted');
+    };
 
-            </Text>
-          </View>
-          <View>
-            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
-              Formas de Pagamento
+    fetchUserData();
+    requestGalleryPermission();
+  }, []);
 
-            </Text>
-            <View>
-              <Image source={require('../PastaFotos/pixFoto.png')}
-                style={{ marginTop: 13 }}
-              />
-            </View>
+  const handleSave = async () => {
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const docRef = doc(db, 'users', user.uid);
+        await updateDoc(docRef, { name });
+        setUserData({ ...userData, name });
+        setEditando(false);
+        Alert.alert('Sucesso', 'Dados atualizados com sucesso!');
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível atualizar os dados.');
+    }
+  };
 
-            <View>
-              <Image source={require('../PastaFotos/cartaoFoto.png')}
-                style={{ marginLeft: 100, marginTop: -30 }}
-              />
-            </View>
+  const pickImageAndUpload = async () => {
+    try {
+      if (!galleryPermission) {
+        Alert.alert('Permissão Negada', 'Você precisa permitir o acesso à galeria.');
+        return;
+      }
 
-            <View>
-              <Text style={{ fontWeight: 'bold', textAlign: 'center', fontSize: 20 }}>Fatura Atual</Text>
-              <Image source={require('../PastaFotos/CodigodeBarras.png')}
-                style={{ marginTop: -2, height: 40 }}
-              />
-            </View>
-          </View>
-        </View>
-        <Text style={{ borderRadius: 20, borderColor: 'black', borderWidth: 1, padding: 5, fontSize: 20, fontWeight: 'bold', marginTop: 10, width: '50%', textAlign: 'center' }}>
-          Mudar Plano
-        </Text>
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+        base64: true,
+      });
+
+      if (!result.canceled) {
+        const base64Img = `data:image/jpg;base64,${result.assets[0].base64}`;
+        const data = {
+          file: base64Img,
+          upload_preset: 'biblioteca', 
+          cloud_name: 'db6qew2cq',     
+        };
+
+        const res = await fetch('https://api.cloudinary.com/v1_1/db6qew2cq/image/upload', {
+          method: 'POST',
+          body: JSON.stringify(data),
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const json = await res.json();
+
+        if (json.secure_url) {
+          const user = auth.currentUser;
+          await updateDoc(doc(db, 'users', user.uid), {
+            photoURL: json.secure_url,
+          });
+
+          setUserData(prev => ({ ...prev, photoURL: json.secure_url }));
+          Alert.alert('Sucesso', 'Foto de perfil atualizada!');
+        } else {
+          Alert.alert('Erro', 'Erro ao enviar imagem. Verifique se o preset está correto.');
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Erro', 'Algo deu errado ao tentar fazer o upload.');
+    }
+  };
+
+  if (carregar) {
+    return (
+      <View style={[estilo.container, { justifyContent: 'center' }]}>
+        <Text>Carregando dados do usuário...</Text>
       </View>
-    </ScrollView>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#EBF4FE' }}>
+      <ScrollView>
+        <View style={estilo.container}>
+
+          <View style={estilo.Card4}>
+            <Image style={estilo.ImagemEditada} source={require('../PastaFotos/LogoEditada.png')} />
+          </View>
+
+          <TouchableOpacity onPress={pickImageAndUpload} style={{ alignSelf: 'center', marginTop: 10 }}>
+            {userData?.photoURL ? (
+              <Image source={{ uri: userData.photoURL }} style={{ width: 120, height: 120, borderRadius: 25 }} />
+            ) : (
+              <Image source={require('../PastaFotos/user.jpg')} style={{ width: 120, height: 120, borderRadius: 25 }} />
+            )}
+            <Text style={{ color: 'blue', textAlign: 'center', fontSize: 13, marginTop: 5, fontWeight: 'bold' }}>
+              Editar foto de perfil ✏️
+            </Text>
+          </TouchableOpacity>
+
+          <View style={{ alignItems: 'flex-start', marginTop: 15, width: '90%' }}>
+            <Text style={{ fontSize: 15, fontWeight: 'bold' }}>Nome:</Text>
+            {editando ? (
+              <TextInput
+                style={[estilo.input, { width: '100%' }]}
+                value={name}
+                onChangeText={setName}
+                placeholder="Nome"
+              />
+            ) : (
+              <Text style={{ fontSize: 15, marginTop: 5 }}>{userData?.name || ''}</Text>
+            )}
+          </View>
+
+          <View style={{ alignItems: 'flex-start', marginTop: 15, width: '90%' }}>
+            <Text style={{ fontSize: 15, fontWeight: 'bold' }}>Email:</Text>
+            <Text style={{ fontSize: 15, marginTop: 5 }}>{email}</Text>
+          </View>
+
+          <View style={{ alignItems: 'flex-start', marginTop: 15, width: '90%' }}>
+            <Text style={{ fontSize: 15, fontWeight: 'bold' }}>Senha:</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 15, marginTop: 5 }}>{showSenha ? '••••••••••' : senha}</Text>
+              <Button
+                title={showSenha ? 'Ocultar' : 'Mostrar'}
+                onPress={() => setShowSenha(!showSenha)}
+                color="#8AB4E3"
+              />
+            </View>
+          </View>
+
+          <View style={{ marginTop: 20, width: '90%' }}>
+            {editando ? (
+              <>
+                <Button title="Salvar" onPress={handleSave} color="#8AB4E3" />
+                <View style={{ height: 10 }} />
+                <Button title="Cancelar" onPress={() => setEditando(false)} color="#888" />
+              </>
+            ) : (
+              <Button title="Editar" onPress={() => setEditando(true)} color="#8AB4E3" />
+            )}
+          </View>
+
+       
+          <View style={{ backgroundColor: 'white', marginTop: 15, width: '90%', height: 180, borderRadius: 15, alignItems: 'center' }}>
+
+            <View>
+              <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
+                Plano Atual:
+              </Text>
+            </View>
+            <View>
+              <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
+                Vencimento data:
+              </Text>
+            </View>
+            <View>
+              <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
+                Formas de Pagamento
+              </Text>
+              <View>
+                <Image source={require('../PastaFotos/pixFoto.png')} style={{ marginTop: 13 }} />
+              </View>
+
+              <View>
+                <Image source={require('../PastaFotos/cartaoFoto.png')} style={{ marginLeft: 100, marginTop: -30 }} />
+              </View>
+
+              <View>
+                <Text style={{ fontWeight: 'bold', textAlign: 'center', fontSize: 20 }}>Fatura Atual</Text>
+                <Image source={require('../PastaFotos/CodigodeBarras.png')} style={{ marginTop: -2, height: 40 }} />
+              </View>
+            </View>
+          </View>
+          <Text style={{ borderRadius: 20, borderColor: 'black', borderWidth: 1, padding: 5, fontSize: 20, fontWeight: 'bold', marginTop: 10, width: '50%', textAlign: 'center' }}>
+            Mudar Plano
+          </Text>
+        </View>
+      </ScrollView>
     </View>
   );
 }
+
 const estilo = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
     backgroundColor: '#EBF4FE',
-  },
-  Card: {
-    backgroundColor: '#AECBEB',
-    height: 50,
-    width: '75%',
-    marginTop: 15,
-    alignItems: 'center',
-    borderRadius: 3
-  },
-  Card2: {
-    backgroundColor: '#AECBEB',
-    borderRadius: 15,
-    marginTop: 35,
-    height: 110,
-    width: '90%',
-    marginLeft: -10
   },
   Card4: {
     backgroundColor: '#AECBEB',
@@ -120,117 +244,19 @@ const estilo = StyleSheet.create({
     height: 60,
     marginTop: 50,
     borderRadius: 5,
-    justifyContent: 'center'
-  },
-  Card5: {
-    backgroundColor: 'rgb(160, 188, 224)',
-    height: 100,
-    width: '95%',
-    marginTop: 20,
-    alignItems: 'center',
-    borderRadius: 2,
-  },
-  TextoEditado: {
-    fontSize: 18,
-    textAlign: 'center',
-    color: 'white',
-    fontWeight: 'bold',
-    marginTop: 14
-  },
-  TextoEditado2: {
-    fontSize: 18,
-    textAlign: 'center',
-    color: 'white',
-    fontWeight: 'bold',
-    marginTop: 14
-  },
-  TextoEditado3: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginTop: 3
-  },
-  TextoEditado4: {
-    fontSize: 18,
-    textAlign: 'center',
-    color: 'white',
-    fontWeight: 'bold',
-    marginTop: -40,
-    marginLeft: 170
-  },
-  TextoEditado5: {
-    fontSize: 13,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  TextoEditado5e1: {
-    fontSize: 13,
-    textAlign: 'right',
-    fontWeight: 'bold',
-    marginRight: 60
-  },
-  TextoEditado6: {
-    fontSize: 13,
-    marginTop: 7,
-    padding: 5,
-  },
-  TextoEditado6e1: {
-    fontSize: 13,
-    marginTop: 7,
-    padding: 5,
-    textAlign: 'right',
-    marginRight: '-25'
-  },
-  TextoEditado7: {
-    fontSize: 13,
-    padding: 5,
-    marginTop: -10
-  },
-  TextoEditado8: {
-    fontSize: 13,
-    padding: 5,
-    marginTop: -10,
-    textAlign: 'right',
-    marginRight: '15'
+    justifyContent: 'center',
   },
   ImagemEditada: {
     height: 50,
     width: 215,
+    alignSelf: 'center',
   },
-  ImagemEditada2: {
-    alignSelf: 'flex-end',
-    marginTop: -53,
-    marginRight: -55,
-    borderRadius: 30
+  input: {
+    backgroundColor: 'white',
+    fontSize: 18,
+    borderRadius: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 5,
   },
-  ImagemEditada3: {
-    alignSelf: 'flex-end',
-    marginTop: -89,
-    marginRight: -15,
-    height: 115,
-    width: 110,
-  },
-  ImagemEditada3e1: {
-    alignSelf: 'flex-end',
-    marginTop: -75,
-    marginRight: -15,
-    height: 115,
-    width: 110,
-    borderRadius: 20
-  },
-  ImagemEditada4: {
-    alignSelf: 'flex-start',
-    marginTop: -89,
-    marginRight: -15,
-    height: 115,
-    width: 110,
-
-  },
-  ImagemEditada5: {
-    alignSelf: 'flex-start',
-    marginTop: -89,
-    marginLeft: -15,
-    height: 115,
-    width: 110,
-    borderRadius: 10
-  }
 });
