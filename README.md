@@ -21,4 +21,5 @@ TELA DICAS SOBRE A PELE(PODE VARIAR)
 ![image](https://github.com/user-attachments/assets/4d8dbf67-016e-4aa8-b9f8-7d46c0b6e844)
 
 TELA USUARIO
-![image](https://github.com/user-attachments/assets/6f8e6c8f-573f-4b83-8c09-19d447b84317)
+![image](https://github.com/user-attachments/assets/44ada7bd-3999-400b-89e3-943150c9d942)
+
